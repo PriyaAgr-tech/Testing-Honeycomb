@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Biology - Honeycomb Model - Priya Agrawal</title>
+<style>
+    body{font-family:'Segoe UI',Arial;background:#0f172a;color:#e5e7eb;margin:0;padding:20px}
+    .container{max-width:1200px;margin:auto;display:flex;gap:20px}
+    
+    /* UI Palette matched to your provided images */
+    .controls{flex:1;background:#161d31;padding:25px;border-radius:15px;border-left:4px solid #facc15}
+    .sim-area{flex:2;position:relative}
+    canvas{background:#0a0f1d;border-radius:15px;width:100%;border:1px solid #1e293b}
+
+    h2{margin-top:0; font-size: 1.5em; color: #fff;}
+    label { color: #fff; font-weight: bold; display: block; margin-bottom: 5px;}
+    
+    input[type=range]{width:100%;accent-color:#facc15;margin:15px 0;background:#1e293b}
+    
+    .btn-group { display: flex; gap: 10px; margin: 15px 0; }
+    .btn{padding:12px; border:0; border-radius:8px; cursor:pointer; font-weight:bold; background:#334155; color:#fff; flex:1; transition: 0.2s;}
+    .btn.active{background:#facc15; color:#000}
+    
+    .drop-btn{width:100%; background:#22c55e; color:white; margin-top:20px; font-size:1.1em; border:0; border-radius:8px; padding:18px; cursor:pointer; font-weight:700; text-transform:uppercase}
+    
+    .stat-box{margin-top:20px; padding:20px; background:#111827; border-radius:12px; border:1px solid #1e293b}
+    .limit-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: 600;}
+    
+    .hex-val { color: #22c55e; }
+    .tri-val { color: #818cf8; }
+    .sq-val { color: #ef4444; }
+    .fail { color: #ef4444; font-weight: bold; text-transform: uppercase;}
+    .pass { color: #22c55e; font-weight: bold;}
+</style>
+</head>
+<body>
+
+<div class="container">
+    <div class="controls">
+        <h2>Biology - Honeycomb Model - Priya Agrawal</h2>
+        
+        <label>Select Test Weight: <span id="wVal" style="color:#facc15">1000 N</span></label>
+        <input type="range" id="weight" min="100" max="5000" step="100" value="1000">
+        
+        <div style="margin: 15px 0; font-weight: bold;">
+            Current Object: <span id="objName" style="color:#facc15">🪶 Feather</span>
+        </div>
+
+        <label>Structure Geometry:</label>
+        <div class="btn-group">
+            <button class="btn active" id="hBtn" onclick="setShape('hex', this)">Hexagon</button>
+            <button class="btn" id="tBtn" onclick="setShape('tri', this)">Triangle</button>
+            <button class="btn" id="sBtn" onclick="setShape('sq', this)">Square</button>
+        </div>
+
+        <button class="btn drop-btn" onclick="startDrop()">Drop Object</button>
+
+        <div class="stat-box">
+            <h4 style="margin-top:0; color:#cbd5e1; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px;">Structural Limits (Fixed)</h4>
+            <div class="limit-row"><span>Hexagon:</span> <span class="hex-val">3000N</span></div>
+            <div class="limit-row"><span>Triangle:</span> <span class="tri-val">2100N</span></div>
+            <div class="limit-row"><span>Square:</span> <span class="sq-val">1200N</span></div>
+            
+            <hr style="border:0; border-top:1px solid #1e293b; margin:15px 0">
+            <div id="resultText" style="font-size:0.95em; color: #94a3b8;">Ready for test...</div>
+        </div>
+    </div>
+
+    <div class="sim-area">
+        <canvas id="canvas" width="700" height="500"></canvas>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
+    let currentWeight = 1000, currentShape = 'hex', isFalling = false, isCrushed = false;
+    let objY = -80, velocity = 0, pulseProgress = -1;
+
+    const LIMITS = { hex: 3000, tri: 2100, sq: 1200 };
+
+    function setShape(s, btn) {
+        currentShape = s;
+        document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        resetSim();
+    }
+
+    document.getElementById('weight').oninput = function() {
+        currentWeight = parseInt(this.value);
+        document.getElementById('wVal').innerText = currentWeight + " N";
+        
+        // Update Object Icon and Name based on Newton value
+        let objSpan = document.getElementById('objName');
+        if (currentWeight <= 1000) { objSpan.innerHTML = "🪶 Feather"; }
+        else if (currentWeight <= 2500) { objSpan.innerHTML = "📦 Wooden Crate"; }
+        else if (currentWeight <= 4000) { objSpan.innerHTML = "🏗️ Anvil"; }
+        else { objSpan.innerHTML = "☄️ Tungsten Weight"; }
+        
+        resetSim();
+    };
+
+    function resetSim() {
+        isFalling = false; isCrushed = false; objY = -80; velocity = 0; pulseProgress = -1;
+        document.getElementById('resultText').innerHTML = "Ready for test...";
+        draw();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const size = 30, rows = 5, cols = 8;
+        
+        for(let r=0; r<rows; r++) {
+            for(let c=0; c<cols; c++) {
+                let x = c * 52 + 150, y = r * 45 + 300;
+                if(currentShape === 'hex' && r%2) x += 26;
+                
+                let isImpactZone = Math.abs(x - canvas.width/2) < 120;
+                let drawH = isCrushed && isImpactZone ? 8 : size;
+                let drawY = isCrushed && isImpactZone ? y + 20 : y;
+
+                // INITIAL STATE: Yellow
+                let strokeColor = "#facc15"; 
+                let lineWidth = 2.5;
+                let shadow = 0;
+
+                // IMPACT: Force spreading
+                if (pulseProgress >= 0) {
+                    let rowDelay = r * 10;
+                    if (pulseProgress > rowDelay) {
+                        let intensity = Math.max(0, 1 - (pulseProgress - rowDelay) / 40);
+                        if (intensity > 0) {
+                            lineWidth = 2.5 + (intensity * 4);
+                            shadow = intensity * 15;
+                            strokeColor = currentWeight > LIMITS[currentShape] ? 
+                                `rgba(239, 68, 68, ${intensity})` : `rgba(34, 211, 238, ${intensity})`;
+                        }
+                    }
+                }
+                
+                if (isCrushed && isImpactZone && pulseProgress > 80) strokeColor = "#ef4444";
+
+                ctx.lineWidth = lineWidth;
+                ctx.strokeStyle = strokeColor;
+                if (shadow > 0) { ctx.shadowBlur = shadow; ctx.shadowColor = strokeColor; }
+
+                ctx.beginPath();
+                if(currentShape === 'hex') {
+                    for(let i=0; i<6; i++) {
+                        let a = (Math.PI/3) * i;
+                        ctx.lineTo(x + size * Math.cos(a), drawY + drawH * Math.sin(a));
+                    }
+                } else if(currentShape === 'sq') {
+                    ctx.rect(x - size, drawY - drawH, size*2, drawH*2);
+                } else {
+                    ctx.moveTo(x, drawY - drawH);
+                    ctx.lineTo(x + size, drawY + drawH);
+                    ctx.lineTo(x - size, drawY + drawH);
+                }
+                ctx.closePath(); ctx.stroke(); ctx.shadowBlur = 0; 
+            }
+        }
+
+        // Draw Object
+        ctx.font = "60px Arial"; ctx.textAlign = "center";
+        let icon = currentWeight <= 1000 ? "🪶" : currentWeight <= 2500 ? "📦" : currentWeight <= 4000 ? "🏗️" : "☄️";
+        ctx.fillText(icon, canvas.width/2, objY);
+        ctx.font = "bold 16px Arial"; ctx.fillStyle = "white";
+        ctx.fillText(currentWeight + "N", canvas.width/2, objY + 20);
+    }
+
+    function startDrop() {
+        if(isFalling) return;
+        resetSim(); isFalling = true; animate();
+    }
+
+    function animate() {
+        if(isFalling) {
+            velocity += 0.8; objY += velocity;
+            if(objY >= 250) {
+                isFalling = false; objY = 250; pulseProgress = 0;
+                if(currentWeight > LIMITS[currentShape]) isCrushed = true;
+                checkResult();
+            }
+        }
+        if (pulseProgress >= 0 && pulseProgress < 150) pulseProgress += 2.5; 
+        draw();
+        if(isFalling || (pulseProgress >= 0 && pulseProgress < 150)) requestAnimationFrame(animate);
+    }
+
+    function checkResult() {
+        const lim = LIMITS[currentShape];
+        const res = document.getElementById('resultText');
+        if(currentWeight > lim) {
+            res.innerHTML = `<span class="fail">COLLAPSE!</span> The force could not be distributed. The ${currentShape} structural limit is ${lim}N.`;
+        } else {
+            res.innerHTML = `<span class="pass">STABLE!</span> The ${currentShape} geometry successfully distributed the load.`;
+        }
+    }
+    draw();
+</script>
+</body>
+</html>
